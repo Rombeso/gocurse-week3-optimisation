@@ -1,14 +1,16 @@
 package main
 
 import (
-	"encoding/json"
+	"bufio"
 	"fmt"
+	"hw3/data"
 	"io"
-	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
 )
+
+var r = regexp.MustCompile("@")
 
 // вам надо написать более быструю оптимальную этой функции
 func FastSearch(out io.Writer) {
@@ -25,79 +27,76 @@ func FastSearch(out io.Writer) {
 		panic(err)
 	}
 
-	fileContents, err := ioutil.ReadAll(file)
-	if err != nil {
+	scanner := bufio.NewScanner(file)
+	var lines []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		lines = append(lines, line)
+	}
+
+	if err := scanner.Err(); err != nil {
 		panic(err)
 	}
 
-	r := regexp.MustCompile("@")
 	seenBrowsers := []string{}
+
 	uniqueBrowsers := 0
-	foundUsers := ""
+	//var foundUsers bytes.Buffer
+	users := make([]data.User, len(lines))
 
-	lines := strings.Split(string(fileContents), "\n")
-
-	users := make([]map[string]interface{}, 0)
-	for _, line := range lines {
-		user := make(map[string]interface{})
+	for j, line := range lines {
+		var u = data.User{}
 		// fmt.Printf("%v %v\n", err, line)
-		err := json.Unmarshal([]byte(line), &user)
+		err := u.UnmarshalJSON([]byte(line))
 		if err != nil {
 			panic(err)
 		}
-		users = append(users, user)
+		users[j] = u
 	}
-
+	fmt.Fprintf(out, "found users:\n")
 	for i, user := range users {
 
 		isAndroid := false
 		isMSIE := false
 
-		browsers, ok := user["browsers"].([]interface{})
-		if !ok {
-			// log.Println("cant cast browsers")
+		if len(user.Browsers) == 0 {
+			//log.Println("cant cast browsers")
 			continue
 		}
 
-		for _, browserRaw := range browsers {
-			browser, ok := browserRaw.(string)
-			if !ok {
-				// log.Println("cant cast browser to string")
+		for _, browserRaw := range user.Browsers {
+			if browserRaw == "" {
+				//log.Println("cant cast browser to string")
 				continue
 			}
-			if ok, err := regexp.MatchString("Android", browser); ok && err == nil {
+			if ok := strings.Contains(browserRaw, "Android"); ok {
+				//log.Println("browser patAndroid: ", browserRaw)
 				isAndroid = true
 				notSeenBefore := true
 				for _, item := range seenBrowsers {
-					if item == browser {
+					if item == browserRaw {
 						notSeenBefore = false
 					}
 				}
 				if notSeenBefore {
-					// log.Printf("SLOW New browser: %s, first seen: %s", browser, user["name"])
-					seenBrowsers = append(seenBrowsers, browser)
+					//log.Printf("SLOW New browser: %s, first seen: %s", browserRaw, user.Name)
+					seenBrowsers = append(seenBrowsers, browserRaw)
 					uniqueBrowsers++
+
 				}
 			}
-		}
-
-		for _, browserRaw := range browsers {
-			browser, ok := browserRaw.(string)
-			if !ok {
-				// log.Println("cant cast browser to string")
-				continue
-			}
-			if ok, err := regexp.MatchString("MSIE", browser); ok && err == nil {
+			if ok := strings.Contains(browserRaw, "MSIE"); ok {
+				//log.Println("browser patMSIE: ", browser)
 				isMSIE = true
 				notSeenBefore := true
 				for _, item := range seenBrowsers {
-					if item == browser {
+					if item == browserRaw {
 						notSeenBefore = false
 					}
 				}
 				if notSeenBefore {
-					// log.Printf("SLOW New browser: %s, first seen: %s", browser, user["name"])
-					seenBrowsers = append(seenBrowsers, browser)
+					//log.Printf("SLOW New browser: %s, first seen: %s", browserRaw, user.Name)
+					seenBrowsers = append(seenBrowsers, browserRaw)
 					uniqueBrowsers++
 				}
 			}
@@ -107,13 +106,17 @@ func FastSearch(out io.Writer) {
 			continue
 		}
 
-		// log.Println("Android and MSIE user:", user["name"], user["email"])
-		email := r.ReplaceAllString(user["email"].(string), " [at] ")
-		foundUsers += fmt.Sprintf("[%d] %s <%s>\n", i, user["name"], email)
+		//log.Println("Android and MSIE user:", user.Name, user.Email)
+
+		email := r.ReplaceAllString(user.Email, " [at] ")
+		fmt.Fprintf(out, "[%d] %s <%s>\n", i, user.Name, email)
+		//foundUsers.WriteString(fmt.Sprintf("[%d] %s <%s>\n", i, user.Name, email))
+
 	}
-
-	fmt.Fprintln(out, "found users:\n"+foundUsers)
-	fmt.Fprintln(out, "Total unique browsers", len(seenBrowsers))
+	fmt.Fprintln(out, "\nTotal unique browsers", len(seenBrowsers))
+	err = file.Close()
+	if err != nil {
+		panic(err)
+	}
 	//SlowSearch(out)
-
 }
